@@ -23,17 +23,20 @@ extern crate log;
 extern crate pretty_env_logger;
 extern crate serde;
 extern crate serde_json;
+extern crate yaml_rust;
 
 mod config;
 mod error;
 mod filter;
+mod yaml;
 
-use std::fs::File;
+use std::fs::read_to_string;
 use std::io::{BufRead, BufReader};
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use futures::Future;
 use hyper::Server;
+use yaml_rust::{Yaml, YamlLoader};
 
 use self::config::Config;
 use self::error::Error;
@@ -49,17 +52,13 @@ fn main() {
     let bind = value_t_or_exit!(args.value_of("bind"), Ipv4Addr);
     let port = value_t_or_exit!(args, "port", u16);
     let forward = value_t_or_exit!(args, "forward", String).parse().unwrap();
-    let allowed_list = args.value_of("allowed_list").unwrap();
-    let mut allowed_rpcs = BufReader::new(File::open(allowed_list).unwrap())
-        .lines()
-        .map(|line| line.map(|line| line.trim().to_string()))
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    allowed_rpcs.sort_unstable();
+    let allowed_list_path = args.value_of("allowed_list").unwrap();
+    let allowed_list = read_to_string(allowed_list_path).unwrap();
+    let yamls = YamlLoader::load_from_str(&allowed_list).unwrap();
 
     let bind_addr = SocketAddrV4::new(bind, port).into();
 
-    let config = Config::new(forward, allowed_rpcs);
+    let config = Config::new(forward, vec![]);
     let server = Server::bind(&bind_addr)
         .serve(config)
         .map_err(|e| println!("{:?}", e));
